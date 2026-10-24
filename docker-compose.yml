@@ -11,7 +11,7 @@ services:
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth_user} -d ${AUTH_DB_NAME:-auth_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth_user} -d ${AUTH_DB_NAME:-auth_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -30,7 +30,7 @@ services:
     volumes:
       - customer-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CUSTOMER_DB_USER:-customer_user} -d ${CUSTOMER_DB_NAME:-customer_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${CUSTOMER_DB_USER:-customer_user} -d ${CUSTOMER_DB_NAME:-customer_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -49,7 +49,7 @@ services:
     volumes:
       - order-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${ORDER_DB_USER:-order_user} -d ${ORDER_DB_NAME:-order_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${ORDER_DB_USER:-order_user} -d ${ORDER_DB_NAME:-order_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -64,7 +64,7 @@ services:
     volumes:
       - product-db-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\""]
+      test: [ "CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\"" ]
       interval: 15s
       timeout: 20s
       retries: 5
@@ -80,7 +80,7 @@ services:
     volumes:
       - shipment-db-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\""]
+      test: [ "CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\"" ]
       interval: 15s
       timeout: 20s
       retries: 5
@@ -94,7 +94,7 @@ services:
     ports:
       - "${REDIS_PORT:-16379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -104,6 +104,8 @@ services:
   kafka:
     image: apache/kafka:3.7.2
     container_name: kafka
+    init: true
+    stop_grace_period: 30s
     ports:
       - "19092:19092"
     environment:
@@ -122,7 +124,7 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 > /dev/null 2>&1 || exit 1" ]
       interval: 10s
       timeout: 20s
       retries: 12
@@ -133,11 +135,12 @@ services:
   kafka-init:
     image: apache/kafka:3.7.2
     container_name: kafka-init
+    init: true
     depends_on:
       kafka:
         condition: service_healthy
     restart: "no"
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic order-created --partitions 3 --replication-factor 1
@@ -155,4 +158,3 @@ volumes:
 networks:
   ecommerce-net:
     driver: bridge
-
