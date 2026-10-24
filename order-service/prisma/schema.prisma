@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  oid           Int           @id @default(autoincrement())
+  uid           Int
+  discount      Decimal       @db.Decimal(10, 2)
+  total_amount  Decimal       @db.Decimal(10, 2)
+  created_at    DateTime      @default(now())
+  order_details OrderDetail[]
+
+  @@map("orders")
+}
+
+model OrderDetail {
+  oid        Int
+  pid        Int
+  qty        Int
+  unit_price Decimal @db.Decimal(10, 2)
+  order      Order   @relation(fields: [oid], references: [oid], onDelete: Cascade)
+
+  @@id([oid, pid])
+  @@map("order_details")
+}
+
+model OutboxEvent {
+  id           Int       @id @default(autoincrement())
+  aggregate_id Int
+  event_type   String    @db.VarChar(50)
+  payload      Json
+  status       String    @default("PENDING") @db.VarChar(20)
+  attempts     Int       @default(0)
+  created_at   DateTime  @default(now())
+  published_at DateTime?
+
+  @@map("outbox_events")
+}
