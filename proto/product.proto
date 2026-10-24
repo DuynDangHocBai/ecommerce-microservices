@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package product;
+
+// Dịch vụ quản lý sản phẩm và tồn kho (được order-service gọi qua gRPC)
+service ProductService {
+  // Lấy thông tin giá và tồn kho cho danh sách sản phẩm (order-service gọi khi kiểm tra đơn hàng)
+  rpc GetProducts(GetProductsRequest) returns (ProductsReply);
+
+  // Trừ tồn kho nguyên tử khi đặt hàng (order-service gọi trước khi tạo đơn hàng)
+  rpc DecreaseStock(StockRequest) returns (StockReply);
+
+  // Hoàn lại tồn kho khi giao dịch tạo đơn hàng thất bại (order-service gọi để bù trừ)
+  rpc RestoreStock(StockRequest) returns (StockReply);
+}
+
+// Yêu cầu lấy thông tin sản phẩm theo danh sách mã pid
+message GetProductsRequest {
+  repeated int32 pids = 1; // Danh sách mã sản phẩm cần tra cứu
+}
+
+// Thông tin chi tiết một sản phẩm
+message Product {
+  int32 pid = 1;         // Mã định danh sản phẩm duy nhất
+  string pname = 2;      // Tên sản phẩm
+  double price = 3;      // Đơn giá sản phẩm
+  int32 quantity = 4;    // Số lượng tồn kho hiện tại
+}
+
+// Danh sách sản phẩm trả về
+message ProductsReply {
+  repeated Product items = 1; // Danh sách sản phẩm tương ứng với các pid yêu cầu
+}
+
+// Thông tin từng mặt hàng cần trừ hoặc hoàn kho
+message StockItem {
+  int32 pid = 1; // Mã sản phẩm cần thao tác
+  int32 qty = 2; // Số lượng cần thay đổi (phải > 0)
+}
+
+// Yêu cầu cập nhật tồn kho cho danh sách mặt hàng
+message StockRequest {
+  repeated StockItem items = 1; // Danh sách các mặt hàng cần trừ hoặc hoàn kho
+}
+
+// Kết quả cập nhật tồn kho
+message StockReply {
+  bool success = 1;           // Trạng thái cập nhật tồn kho thành công (true/false)
+  repeated Product items = 2; // Danh sách sản phẩm cùng số lượng tồn kho mới sau khi cập nhật
+}
