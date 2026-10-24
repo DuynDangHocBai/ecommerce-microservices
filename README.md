@@ -4,81 +4,138 @@ Dự án Ecommerce MVP xây dựng theo kiến trúc Microservices hướng Doma
 
 ---
 
-## 1. Hạ tầng dịch vụ (Infrastructure Containers)
+## 1. Sơ đồ kiến trúc & Container
 
-Bảng tổng hợp các container hạ tầng được cấu hình trong `docker-compose.yml`:
+Toàn bộ hệ thống gồm 14 container hoạt động đồng bộ trên mạng ảo Docker `ecommerce-net`:
 
-| Container | Image | Port Host | Port Container | Mục đích / Ghi chú |
+```mermaid
+flowchart TD
+    Client(["Client / Front-end"]) -->|HTTP Port 18080| Gateway["api-gateway\n(Port 4100 -> 18080)"]
+    
+    Gateway -->|Rate-limit / Cache| Redis[("redis\n(Port 6379)")]
+    Gateway -->|HTTP Proxy| Auth["auth-service\n(Port 4101)"]
+    Gateway -->|HTTP Proxy| Customer["customer-service\n(Port 4102)"]
+    Gateway -->|HTTP Proxy| Product["product-service\n(Port 4103)"]
+    Gateway -->|HTTP Proxy| Order["order-service\n(Port 4104)"]
+    Gateway -->|HTTP Proxy| Shipment["shipment-service\n(Port 4105)"]
+
+    Auth -->|gRPC: CreateCustomer| Customer
+    Auth -->|Prisma| AuthDB[("auth-db\nPostgreSQL: 5432")]
+
+    Customer -->|Prisma| CustomerDB[("customer-db\nPostgreSQL: 5432")]
+
+    Product -->|Mongoose| ProductDB[("product-db\nMongoDB: 27017")]
+
+    Order -->|gRPC: GetCustomer, Score| Customer
+    Order -->|gRPC: GetProducts, DecreaseStock| Product
+    Order -->|Prisma| OrderDB[("order-db\nPostgreSQL: 5432")]
+    Order -.->|Outbox Publisher| Kafka{{"kafka\n(Port 29092)"}}
+
+    Kafka -.->|Consumer: order-created| Shipment
+    Shipment -->|Mongoose| ShipmentDB[("shipment-db\nMongoDB: 27017")]
+    
+    KafkaInit["kafka-init\n(Create topic order-created)"] -.->|Setup| Kafka
+```
+
+---
+
+## 2. Danh sách Containers & Port
+
+| Container | Type | Port Host (Dev) | Port Container | Mục đích / Ghi chú |
 |---|---|---|---|---|
-| `auth-db` | `postgres:16-alpine` | `15433` | `5432` | Lưu trữ dữ liệu User, Role cho `auth-service` |
-| `customer-db` | `postgres:16-alpine` | `15434` | `5432` | Lưu trữ dữ liệu Customer, MemberShip cho `customer-service` |
-| `order-db` | `postgres:16-alpine` | `15435` | `5432` | Lưu trữ dữ liệu Order, OrderDetail, OutboxEvent cho `order-service` |
-| `product-db` | `mongo:7` | `37018` | `27017` | Lưu trữ danh mục Product, tồn kho cho `product-service` |
-| `shipment-db` | `mongo:7` | `37019` | `27017` | Lưu trữ trạng thái giao vận Shipment cho `shipment-service` |
-| `redis` | `redis:7-alpine` | `16379` | `6379` | Cache và Rate Limiting cho `api-gateway` |
-| `kafka` | `apache/kafka:3.7.2` | `19092` | `19092` (host)<br>`29092` (nội bộ) | Message Broker chế độ KRaft single-node (không Zookeeper) |
-| `kafka-init` | `apache/kafka:3.7.2` | – | – | Khởi tạo topic `order-created` (3 partitions, 1 replica) khi Kafka healthy rồi thoát |
+| `api-gateway` | Service | **18080** | `4100` | **Entry point duy nhất** (Reverse Proxy, JWT Auth, Rate Limiting, Cache) |
+| `auth-service` | Service | – | `4101` | Quản lý định danh, đăng ký, đăng nhập & cấp JWT |
+| `customer-service` | Service | – | `4102` (HTTP)<br>`50052` (gRPC) | Quản lý thông tin khách hàng & điểm thành viên |
+| `product-service` | Service | – | `4103` (HTTP)<br>`50053` (gRPC) | Quản lý danh mục hàng hóa & trừ kho nguyên tử |
+| `order-service` | Service | – | `4104` | Xử lý tạo đơn hàng, tính chiết khấu & Outbox publisher |
+| `shipment-service` | Service | – | `4105` | Kafka consumer lắng nghe `order-created`, quản lý trạng thái giao hàng |
+| `auth-db` | Database | `15433` | `5432` | PostgreSQL lưu trữ User, Role |
+| `customer-db` | Database | `15434` | `5432` | PostgreSQL lưu trữ Customer, Membership |
+| `order-db` | Database | `15435` | `5432` | PostgreSQL lưu trữ Order, OrderDetail, OutboxEvent |
+| `product-db` | Database | `37018` | `27017` | MongoDB lưu trữ products |
+| `shipment-db` | Database | `37019` | `27017` | MongoDB lưu trữ shipments & processed_events |
+| `redis` | Cache / Limiter | `16379` | `6379` | Redis cho API Gateway |
+| `kafka` | Message Broker | `19092` | `19092` (host)<br>`29092` (nội bộ) | Apache Kafka 3.7 (chế độ KRaft) |
+| `kafka-init` | Init Container | – | – | Tự động tạo topic `order-created` khi Kafka sẵn sàng rồi thoát |
 
-Tất cả container hạ tầng kết nối qua mạng nội bộ Docker: `ecommerce-net`.
+> **Quy ước Port khi triển khai toàn diện (Bước 10):**
+> - Chỉ duy nhất **`api-gateway`** được publish ra máy host tại port **`18080`** (`http://localhost:18080`).
+> - Tất cả các microservice và database giao tiếp với nhau qua mạng nội bộ `ecommerce-net` bằng tên container và port nội bộ.
 
-### Bảng Port Ứng Dụng & Hạ Tầng
+---
 
-#### Port ứng dụng (chạy Node.js cục bộ - Bước 2–9):
-| Service | HTTP Port | gRPC Port | Ghi chú |
+## 3. Hướng dẫn khởi chạy hệ thống bằng Docker
+
+### Bước 1: Chuẩn bị biến môi trường
+```bash
+cp .env.example .env
+```
+*(Đảm bảo các biến mật khẩu, port và `JWT_SECRET` đã được thiết lập đúng trong `.env`)*
+
+### Bước 2: Build và khởi chạy toàn bộ 14 containers
+```bash
+docker compose up -d --build
+```
+
+### Bước 3: Kiểm tra trạng thái sức khỏe của các service
+```bash
+docker compose ps
+```
+Tất cả các service sẽ đạt trạng thái `Up (healthy)`.
+
+### Bước 4: Kiểm tra Gateway Health Check
+```bash
+curl http://localhost:18080/api/health
+```
+Kết quả trả về HTTP 200 kèm trạng thái `UP` của cả 5 microservices phụ thuộc.
+
+### Dừng hệ thống khi cần
+```bash
+docker compose down
+```
+
+---
+
+## 4. Danh sách tài khoản người dùng có sẵn (Seed Data)
+
+Hệ thống đã tự động chạy migration và nạp sẵn 5 tài khoản mẫu:
+
+| Username | Password | Role | Membership Tier | Điểm thưởng | Tỷ lệ chiết khấu |
+|---|---|---|---|---|---|
+| `admin` | `Admin@123` | `ADMIN` | GOLD | 1000 | 10% |
+| `staff` | `Staff@123` | `SHIPMENT_STAFF` | BRONZE | 0 | 0% |
+| `bronze_user` | `User@123` | `CUSTOMER` | BRONZE | 0 | 0% |
+| `silver_user` | `User@123` | `CUSTOMER` | SILVER | 500 | 5% |
+| `gold_user` | `User@123` | `CUSTOMER` | GOLD | 1000 | 10% |
+
+---
+
+## 5. Dữ liệu sản phẩm mẫu & Ghi chú Reset kho
+
+Khi khởi động, **`product-service`** tự động thực hiện script `seed.js` trước khi khởi chạy HTTP/gRPC server để đảm bảo dữ liệu sản phẩm luôn ở trạng thái mẫu chuẩn:
+
+| PID | Tên sản phẩm | Đơn giá ($) | Tồn kho ban đầu |
 |---|---|---|---|
-| `api-gateway` | `4100` | – | Entry point REST API |
-| `auth-service` | `4101` | – | Quản lý Auth, User, JWT |
-| `customer-service` | `4102` | `50052` | Quản lý Customer & Membership |
-| `product-service` | `4103` | `50053` | Quản lý Product & Stock |
-| `order-service` | `4104` | – | Quản lý Order & Outbox |
-| `shipment-service` | `4105` | – | Quản lý Shipment & Event Consume |
+| `1` | Laptop | 1500.00 | 10 |
+| `2` | Mouse | 25.00 | 100 |
+| `3` | Keyboard | 45.00 | 50 |
 
-*Lưu ý: Tuyệt đối không dùng các port 3000, 3001, 5433, 8080, 27017 do đã bị chiếm dụng trên host.*
-
-#### Port hạ tầng kết nối từ máy Host:
-- `auth-db`: `localhost:15433` (PostgreSQL)
-- `customer-db`: `localhost:15434` (PostgreSQL)
-- `order-db`: `localhost:15435` (PostgreSQL)
-- `product-db`: `localhost:37018` (MongoDB)
-- `shipment-db`: `localhost:37019` (MongoDB)
-- `redis`: `localhost:16379` (Redis)
-- `kafka`: `localhost:19092` (Kafka)
-
-#### Khi chạy Docker Compose đầy đủ (Bước 10):
-- Chỉ duy nhất `api-gateway` publish ra host port `18080`.
-- Các service nội bộ kết nối qua tên container và port nội bộ trong Docker network (`auth-db:5432`, `product-db:27017`, `redis:6379`, `kafka:29092`).
+> **Lưu ý:**
+> - Mỗi lần `product-service` khởi động lại (restart container hoặc compose up), tồn kho của 3 sản phẩm trên sẽ tự động được **khôi phục (reset)** về số lượng ban đầu (`10`, `100`, `50`).
+> - Sequence counter cho `pid` được đặt về `3`, đảm bảo sản phẩm mới tạo qua API sẽ nhận `pid` kế tiếp là `4`.
 
 ---
 
-## 2. Vì sao áp dụng mô hình Database-per-Service?
+## 6. Mô hình kiến trúc & Nguyên lý thiết kế
 
-Dự án áp dụng chặt chẽ pattern **Database-per-Service** vì các lý do cốt lõi sau:
-
-1. **Loose Coupling (Giảm thiểu phụ thuộc lẫn nhau)**:
-   - Các microservice không truy cập trực tiếp vào schema hay bảng của service khác.
-   - Mỗi service có toàn quyền thay đổi schema nội bộ, tối ưu hóa câu truy vấn hoặc nâng cấp cơ sở dữ liệu mà không gây ảnh hưởng đến các service khác.
-2. **Độc lập triển khai và mở rộng (Independent Scaling & Deployment)**:
-   - Từng service có thể co giãn (scale-out) tài nguyên lưu trữ độc lập theo nhu cầu thực tế (ví dụ: `order-db` cần nhiều tài nguyên I/O hơn trong đợt khuyến mãi).
-3. **Phù hợp công nghệ theo đặc thù dữ liệu (Polyglot Persistence)**:
-   - Dữ liệu giao dịch, quan hệ chặt chẽ và tính nhất quán cao (ACID) của User, Customer, Order sử dụng cơ sở dữ liệu quan hệ **PostgreSQL**.
-   - Dữ liệu tài liệu linh hoạt, phi cấu trúc hoặc thường xuyên thay đổi thuộc tính của Product Catalog và Shipment sử dụng cơ sở dữ liệu NoSQL **MongoDB**.
-4. **Cách ly lỗi (Fault Domain Isolation)**:
-   - Sự cố ở một cơ sở dữ liệu (ví dụ quá tải kết nối, lỗi phần cứng) chỉ ảnh hưởng tới service phụ trách, không kéo sập toàn bộ hệ sinh thái thương mại điện tử.
-   - Giao tiếp giữa các service chỉ thực hiện qua API đồng bộ (**gRPC**) hoặc bất đồng bộ (**Kafka event**), đảm bảo tính toàn vẹn của Bounded Context.
-
----
-
-## 3. Hướng dẫn khởi động hạ tầng
-
-1. Sao chép cấu hình biến môi trường:
-   ```bash
-   cp .env.example .env
-   ```
-2. Khởi động toàn bộ hạ tầng container:
-   ```bash
-   docker compose up -d
-   ```
-3. Kiểm tra trạng thái sức khỏe các container:
-   ```bash
-   docker compose ps -a
-   ```
+1. **Database-per-Service**:
+   - Tuyệt đối không chia sẻ database giữa các microservice. Mỗi service sở hữu trọn vẹn dữ liệu và vòng đời schema của mình.
+   - Polyglot Persistence: PostgreSQL cho nghiệp vụ giao dịch quan hệ (Auth, Customer, Order) và MongoDB cho dữ liệu phi cấu trúc/sản phẩm (Product, Shipment).
+2. **Giao tiếp đồng bộ qua gRPC**:
+   - `order-service` gọi `customer-service` (lấy thông tin, điểm tích lũy) và `product-service` (lấy giá, trừ kho nguyên tử) bằng Protobuf qua gRPC với deadline 3 giây và cơ chế bù trừ (compensating transaction) khi tạo đơn thất bại.
+3. **Transactional Outbox Pattern & Event-Driven Kafka**:
+   - `order-service` ghi nhận đơn hàng và sự kiện `OrderCreated` trong cùng một database transaction.
+   - Outbox Publisher chạy nền định kỳ đọc các sự kiện `PENDING` và đẩy lên Kafka topic `order-created`.
+   - `shipment-service` lắng nghe topic với Idempotent Consumer (dựa vào `eventId` và `oid` unique) để tự động tạo `Shipment` ở trạng thái `PENDING`.
+4. **Bảo mật & Ủy quyền tập trung**:
+   - `api-gateway` xác thực chữ ký JWT, kiểm tra quyền hạn theo vai trò (RBAC) và chuyển tiếp định danh người dùng qua các header bảo mật `x-user-id` và `x-user-role`.

@@ -18,7 +18,7 @@ class CustomerGrpcClient {
     if (this.client) return this.client;
 
     const candidates = [
-      process.env.PROTO_DIR ? path.resolve(process.cwd(), process.env.PROTO_DIR, 'customer.proto') : null,
+      process.env.PROTO_DIR ? (path.isAbsolute(process.env.PROTO_DIR) ? path.join(process.env.PROTO_DIR, 'customer.proto') : path.resolve(process.cwd(), process.env.PROTO_DIR, 'customer.proto')) : null,
       path.resolve(process.cwd(), 'proto/customer.proto'),
       path.resolve(process.cwd(), '../proto/customer.proto'),
       path.resolve(__dirname, '../../../../proto/customer.proto'),

@@ -5,7 +5,7 @@ const protoLoader = require('@grpc/proto-loader');
 
 function loadProductProto() {
   const candidates = [
-    process.env.PROTO_DIR ? path.resolve(process.cwd(), process.env.PROTO_DIR, 'product.proto') : null,
+    process.env.PROTO_DIR ? (path.isAbsolute(process.env.PROTO_DIR) ? path.join(process.env.PROTO_DIR, 'product.proto') : path.resolve(process.cwd(), process.env.PROTO_DIR, 'product.proto')) : null,
     path.resolve(process.cwd(), 'proto/product.proto'),
     path.resolve(process.cwd(), '../proto/product.proto'),
     path.resolve(__dirname, '../../../../proto/product.proto'),

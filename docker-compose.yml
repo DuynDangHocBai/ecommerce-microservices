@@ -148,6 +148,203 @@ services:
     networks:
       - ecommerce-net
 
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    container_name: auth-service
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      PORT: 4101
+      DATABASE_URL: postgresql://${AUTH_DB_USER:-auth_user}:${AUTH_DB_PASSWORD:-auth_password}@auth-db:5432/${AUTH_DB_NAME:-auth_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 3600
+      CUSTOMER_GRPC_URL: customer-service:50052
+      PROTO_DIR: /app/proto
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4101/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  customer-service:
+    build:
+      context: .
+      dockerfile: customer-service/Dockerfile
+    container_name: customer-service
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      PORT: 4102
+      GRPC_PORT: 50052
+      DATABASE_URL: postgresql://${CUSTOMER_DB_USER:-customer_user}:${CUSTOMER_DB_PASSWORD:-customer_password}@customer-db:5432/${CUSTOMER_DB_NAME:-customer_db}?schema=public
+      PROTO_DIR: /app/proto
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4102/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      customer-db:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  product-service:
+    build:
+      context: .
+      dockerfile: product-service/Dockerfile
+    container_name: product-service
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      PORT: 4103
+      GRPC_PORT: 50053
+      MONGO_URI: mongodb://product-db:27017/${PRODUCT_DB_NAME:-product_db}
+      PROTO_DIR: /app/proto
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4103/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      product-db:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    container_name: order-service
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      PORT: 4104
+      DATABASE_URL: postgresql://${ORDER_DB_USER:-order_user}:${ORDER_DB_PASSWORD:-order_password}@order-db:5432/${ORDER_DB_NAME:-order_db}?schema=public
+      CUSTOMER_GRPC_URL: customer-service:50052
+      PRODUCT_GRPC_URL: product-service:50053
+      PROTO_DIR: /app/proto
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_CLIENT_ID: order-service
+      KAFKA_TOPIC_ORDER_CREATED: order-created
+      OUTBOX_POLL_INTERVAL_MS: 2000
+      OUTBOX_BATCH_SIZE: 50
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4104/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      order-db:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  shipment-service:
+    build:
+      context: .
+      dockerfile: shipment-service/Dockerfile
+    container_name: shipment-service
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      PORT: 4105
+      MONGO_URI: mongodb://shipment-db:27017/${SHIPMENT_DB_NAME:-shipment_db}
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_GROUP_ID: shipment-service
+      KAFKA_TOPIC_ORDER_CREATED: order-created
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4105/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      shipment-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
+    init: true
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "18080:4100"
+    environment:
+      PORT: 4100
+      AUTH_SERVICE_URL: http://auth-service:4101
+      CUSTOMER_SERVICE_URL: http://customer-service:4102
+      PRODUCT_SERVICE_URL: http://product-service:4103
+      ORDER_SERVICE_URL: http://order-service:4104
+      SHIPMENT_SERVICE_URL: http://shipment-service:4105
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 100
+      AUTH_RATE_LIMIT_MAX: 10
+      PRODUCT_CACHE_TTL: 60
+      HEALTH_SERVICES: auth,customer,product,order,shipment
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:4100/api/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      shipment-service:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+
+
 volumes:
   auth-db-data:
   customer-db-data:
