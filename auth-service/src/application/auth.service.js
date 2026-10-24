@@ -4,6 +4,8 @@ const prisma = require('../infrastructure/db/prisma');
 const { ROLES } = require('../domain/role');
 const { AppError } = require('../domain/errors');
 
+const customerGrpcClient = require('../infrastructure/grpc/customer.client');
+
 class AuthService {
   async register({ username, password, email, phone }) {
     // Check if username already exists
@@ -46,6 +48,25 @@ class AuthService {
         roleid: customerRole.roleid
       }
     });
+
+    // Call customer-service via gRPC CreateCustomer
+    try {
+      await customerGrpcClient.createCustomer({
+        uid: newUser.uid,
+        fullname: username,
+        mid: 1
+      });
+    } catch (grpcError) {
+      console.error(`[auth-service] gRPC createCustomer failed for uid ${newUser.uid}:`, grpcError.message || grpcError);
+      try {
+        await prisma.user.delete({
+          where: { uid: newUser.uid }
+        });
+      } catch (deleteError) {
+        console.error(`[auth-service] Failed to rollback user uid ${newUser.uid}:`, deleteError.message);
+      }
+      throw new AppError('Customer service unavailable', 503);
+    }
 
     return {
       message: 'User registered successfully',

@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package customer;
+
+// Dịch vụ quản lý thông tin khách hàng và hạng thành viên
+service CustomerService {
+  // Lấy thông tin chi tiết khách hàng theo uid (được order-service sử dụng khi tạo đơn hàng)
+  rpc GetCustomer(GetCustomerRequest) returns (CustomerReply);
+
+  // Lấy thông tin điểm thành viên theo uid (được order-service sử dụng để tính tỷ lệ chiết khấu)
+  rpc GetMembershipScore(GetCustomerRequest) returns (MembershipReply);
+
+  // Tạo mới hồ sơ khách hàng (được auth-service gọi đồng bộ khi người dùng đăng ký tài khoản)
+  rpc CreateCustomer(CreateCustomerRequest) returns (CustomerReply);
+}
+
+// Yêu cầu lấy thông tin khách hàng dựa trên ID người dùng
+message GetCustomerRequest {
+  int32 uid = 1; // Mã định danh duy nhất của người dùng
+}
+
+// Yêu cầu tạo mới hồ sơ khách hàng từ Auth Service
+message CreateCustomerRequest {
+  int32 uid = 1;         // Mã định danh người dùng từ bảng users của auth-service
+  string fullname = 2;   // Họ và tên khách hàng (mặc định là username khi đăng ký)
+  int32 mid = 3;         // Mã hạng thành viên khởi tạo (mặc định là 1 - BRONZE)
+}
+
+// Thông tin chi tiết khách hàng trả về
+message CustomerReply {
+  int32 uid = 1;         // Mã định danh người dùng
+  string fullname = 2;   // Họ và tên khách hàng
+  int32 mid = 3;         // Mã hạng thành viên hiện tại
+}
+
+// Thông tin hạng thành viên và điểm tích lũy trả về
+message MembershipReply {
+  int32 uid = 1;         // Mã định danh người dùng
+  int32 mid = 2;         // Mã hạng thành viên
+  string mname = 3;      // Tên hạng thành viên (BRONZE, SILVER, GOLD)
+  int32 score = 4;       // Điểm tích lũy thành viên
+}
