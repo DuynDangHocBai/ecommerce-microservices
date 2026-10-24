@@ -38,7 +38,7 @@ ecommerce-microservices/
 Mỗi service: `src/` chia lớp theo DDD đơn giản: `domain/` (entity, rule nghiệp vụ), `application/` (use case/service), `infrastructure/` (db, grpc, kafka), `interfaces/` (http routes, controllers, grpc handlers); có `package.json`, `.env.example`, `GET /health`. Dockerfile và `.dockerignore` chỉ tạo ở Bước 10.
 
 ## Port
-- Port ứng dụng (khi chạy bằng Node trên máy, Bước 2–9): auth 3001, customer 3002 (gRPC 50052), product 3003 (gRPC 50053), order 3004, shipment 3005, gateway 3000.
+- Port ứng dụng (khi chạy bằng Node trên máy, Bước 2–9): gateway 4100, auth 4101, customer 4102 (gRPC 50052), product 4103 (gRPC 50053), order 4104, shipment 4105. KHÔNG dùng 3000, 3001, 5433, 8080, 27017 (dự án khác đang dùng).
 - Hạ tầng đang chạy bằng Docker, service trên máy kết nối qua PORT HOST:
   auth-db localhost:15433, customer-db localhost:15434, order-db localhost:15435,
   product-db localhost:37018, shipment-db localhost:37019, redis localhost:16379, kafka localhost:19092.
