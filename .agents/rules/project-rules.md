@@ -59,5 +59,5 @@ Mỗi service: `src/` chia lớp theo DDD đơn giản: `domain/` (entity, rule 
   Khi cần thử server: chạy nền, gọi thử, rồi tắt.
 - Nếu cần một lệnh trong danh sách này, DỪNG lại và hỏi tôi.
 
-- Khi chạy trên máy, mọi chuỗi kết nối DB/Redis/Kafka dùng 127.0.0.1, KHÔNG dùng localhost
+- Khi chạy trên máy, mọi chuỗi kết nối DB/Redis/Kafka dùng 127.0.0.1 (kể cả Kafka 127.0.0.1:19092), KHÔNG dùng localhost.
   (Windows + Node mới ưu tiên IPv6 ::1 gây timeout).
