@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test:discount": "node --test tests/discount.test.js"
+    "test:discount": "node --test tests/discount.test.js",
+    "outbox:status": "node scripts/outbox-status.js",
+    "kafka:peek": "node scripts/peek-order-created.js"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.5",
@@ -14,6 +16,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "joi": "^17.13.3",
+    "kafkajs": "^2.2.4",
     "morgan": "^1.10.0"
   },
   "devDependencies": {

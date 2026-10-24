@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const prisma = require('../infrastructure/db/prisma');
 const customerClient = require('../infrastructure/grpc/customer.client');
 const productClient = require('../infrastructure/grpc/product.client');
+const kafkaClient = require('../infrastructure/kafka/kafka.client');
 const { calculateDiscount, calculateTotalAmount } = require('../domain/discount.policy');
 const {
   BadRequestError,
@@ -205,10 +206,12 @@ class OrderService {
 
   async checkHealth() {
     await prisma.$queryRaw`SELECT 1`;
+    const kafkaStatus = await kafkaClient.checkKafkaHealth();
     return {
       status: 'UP',
       service: 'order-service',
-      db: 'UP'
+      db: 'UP',
+      kafka: kafkaStatus
     };
   }
 }

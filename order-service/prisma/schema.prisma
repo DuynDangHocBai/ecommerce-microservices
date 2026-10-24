@@ -38,6 +38,7 @@ model OutboxEvent {
   attempts     Int       @default(0)
   created_at   DateTime  @default(now())
   published_at DateTime?
+  last_error   String?
 
   @@map("outbox_events")
 }
